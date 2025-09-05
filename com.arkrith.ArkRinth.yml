@@ -33,7 +33,7 @@ modules:
     build-options:
       append-path: /usr/lib/sdk/node18/bin
     build-commands:
-      - npm ci --offline --cache=/var/cache/npm
+      - npm ci
       - npm run build
       - npm run dist:linux
       - mkdir -p /app/ArkRinth
