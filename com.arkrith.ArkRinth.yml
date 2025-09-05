@@ -80,7 +80,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/arc360alt/ArkRinthTesting.git
-        branch: main
+        branch: master
       # Include the desktop and metainfo files
       - type: file
         path: com.arkrith.ArkRinth.desktop
