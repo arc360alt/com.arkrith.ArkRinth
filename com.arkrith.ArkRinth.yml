@@ -33,11 +33,22 @@ modules:
     build-options:
       append-path: /usr/lib/sdk/node18/bin
     build-commands:
-      - npm ci
-      - npm run build
-      - npm run dist:linux
+      - npm install --verbose
+      - npm run build --verbose
+      - npm run dist:linux --verbose || npm run build:linux --verbose || electron-builder --linux
       - mkdir -p /app/ArkRinth
-      - cp -r dist/linux-unpacked/* /app/ArkRinth/
+      - |
+        if [ -d "dist/linux-unpacked" ]; then
+          cp -r dist/linux-unpacked/* /app/ArkRinth/
+        elif [ -d "dist/linux" ]; then
+          cp -r dist/linux/* /app/ArkRinth/
+        elif [ -d "build/linux-unpacked" ]; then
+          cp -r build/linux-unpacked/* /app/ArkRinth/
+        else
+          echo "Error: Could not find built application directory"
+          ls -la dist/ || ls -la build/ || ls -la .
+          exit 1
+        fi
       - |
         cat > /app/bin/arkrith << 'EOF'
         #!/bin/bash
