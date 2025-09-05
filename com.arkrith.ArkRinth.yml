@@ -38,10 +38,10 @@ modules:
     build-commands:
       # Install pnpm without npm - multiple approaches
       - |
-        echo "Instaling PNPM (Maybe)"
-        
-        npm install pnpm
-        export PATH="$PWD/node_modules/.bin:$PATH"
+        echo "Installing pnpm via corepack"
+        corepack enable
+        corepack prepare pnpm@latest --activate
+        pnpm --version
       
       # Verify pnpm installation
       - pnpm --version
