@@ -9,30 +9,22 @@ sdk-extensions:
 command: arkrith
 separate-locales: false
 finish-args:
-  # Network access for downloading mods
   - --socket=wayland
   - --socket=fallback-x11
   - --share=ipc
   - --socket=pulseaudio
   - --share=network
-  # File system access for game directories and mod management
   - --filesystem=home
   - --filesystem=xdg-download
   - --filesystem=xdg-documents
-  # Allow access to common game directories
   - --persist=.minecraft
   - --persist=.local/share/applications
-  # GPU acceleration
   - --device=dri
-  # System notifications
   - --talk-name=org.freedesktop.Notifications
-  # For opening URLs
   - --talk-name=org.freedesktop.portal.Desktop
   - --talk-name=org.freedesktop.portal.OpenURI
-  # Allow access to theme
   - --talk-name=org.gtk.vfs.*
   - --talk-name=org.freedesktop.FileManager1
-  # Environment variables
   - --env=NPM_CONFIG_CACHE=/var/cache/npm
 
 modules:
@@ -40,30 +32,20 @@ modules:
     buildsystem: simple
     build-options:
       append-path: /usr/lib/sdk/node18/bin
-      env:
-        npm_config_cache: /var/cache/npm
-        npm_config_offline: 'true'
     build-commands:
-      # Install dependencies
       - npm ci --offline --cache=/var/cache/npm
-      # Build the application
       - npm run build
-      # Package with electron-builder for Linux
       - npm run dist:linux
-      # Install the built application
       - mkdir -p /app/ArkRinth
       - cp -r dist/linux-unpacked/* /app/ArkRinth/
-      # Create launcher script
       - |
         cat > /app/bin/arkrith << 'EOF'
         #!/bin/bash
         exec /app/ArkRinth/arkrith "$@"
         EOF
       - chmod +x /app/bin/arkrith
-      # Install desktop file and icons
       - install -Dm644 com.arkrith.ArkRinth.desktop /app/share/applications/com.arkrith.ArkRinth.desktop
       - install -Dm644 com.arkrith.ArkRinth.metainfo.xml /app/share/metainfo/com.arkrith.ArkRinth.metainfo.xml
-      # Install icons (adjust paths as needed)
       - |
         if [ -f "assets/icon.png" ]; then
           install -Dm644 assets/icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
@@ -72,7 +54,6 @@ modules:
         elif [ -f "icon.png" ]; then
           install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
         else
-          # Create a placeholder icon if none found
           echo "Warning: No icon found, creating placeholder"
           mkdir -p /app/share/icons/hicolor/512x512/apps/
           echo "No icon available" > /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
@@ -81,14 +62,7 @@ modules:
       - type: git
         url: https://github.com/arc360alt/ArkRinthTesting.git
         branch: master
-      # Include the desktop and metainfo files
       - type: file
         path: com.arkrith.ArkRinth.desktop
       - type: file
         path: com.arkrith.ArkRinth.metainfo.xml
-      # Cache npm dependencies
-      - type: file
-        url: https://registry.npmjs.org/npm/-/npm-10.2.4.tgz
-        sha256: 36b548120f75f26408d04ff163cd4a699916f1c4b72ebeeab0bbaf054009eb5b
-        dest: /var/cache/npm
-        dest-filename: npm-10.2.4.tgz
