@@ -38,13 +38,10 @@ modules:
     build-commands:
       # Install pnpm without npm - multiple approaches
       - |
-        echo "Installing pnpm via corepack"
-        corepack enable
-        corepack prepare pnpm@latest --activate
+        echo "Installing pnpm from local tarball"
+        npm install -g ./pnpm-9.12.3.tgz --prefix=/app/pnpm
+        export PATH="/app/pnpm/bin:$PATH"
         pnpm --version
-      
-      # Verify pnpm installation
-      - pnpm --version
       
       # Install dependencies with retries
       - |
@@ -128,6 +125,9 @@ modules:
       - type: git
         url: https://github.com/arc360alt/ArkRinthTesting.git
         branch: master
+      - type: archive
+        url: https://registry.npmjs.org/pnpm/-/pnpm-9.12.3.tgz
+        sha256: <replace-with-real-sha256>
       - type: file
         path: com.arkrith.ArkRinth.desktop
       - type: file
