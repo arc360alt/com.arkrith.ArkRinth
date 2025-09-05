@@ -1,65 +1,94 @@
-name: Build Flatpak
+app-id: com.arkrith.ArkRinth
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+base: org.electronjs.Electron2.BaseApp
+base-version: '23.08'
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.node18
+command: arkrith
+separate-locales: false
+finish-args:
+  # Network access for downloading mods
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --socket=pulseaudio
+  - --share=network
+  # File system access for game directories and mod management
+  - --filesystem=home
+  - --filesystem=xdg-download
+  - --filesystem=xdg-documents
+  # Allow access to common game directories
+  - --persist=.minecraft
+  - --persist=.local/share/applications
+  # GPU acceleration
+  - --device=dri
+  # System notifications
+  - --talk-name=org.freedesktop.Notifications
+  # For opening URLs
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.OpenURI
+  # Allow access to theme
+  - --talk-name=org.gtk.vfs.*
+  - --talk-name=org.freedesktop.FileManager1
+  # Environment variables
+  - --env=NPM_CONFIG_CACHE=/var/cache/npm
 
-on:
-  push:
-    branches: [ main ]
-    tags: [ 'v*' ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
-
-jobs:
-  build-flatpak:
-    runs-on: ubuntu-latest
-    
-    container:
-      image: bilelmoussaoui/flatpak-github-actions:freedesktop-23.08
-      options: --privileged
-    
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-    
-    - name: Build Flatpak
-      uses: flatpak/flatpak-github-actions/flatpak-builder@v6
-      with:
-        bundle: arkrith.flatpak
-        manifest-path: com.arkrith.ArkRinth.yml
-        cache-key: flatpak-builder-${{ github.sha }}
-        upload-artifact: false
-        
-    - name: Upload Flatpak Bundle
-      uses: actions/upload-artifact@v4
-      with:
-        name: arkrith-flatpak-${{ github.sha }}
-        path: arkrith.flatpak
-        retention-days: 30
-        
-    - name: Create Release Assets (on tag)
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        files: arkrith.flatpak
-        name: ArkRinth ${{ github.ref_name }}
-        body: |
-          ## ArkRinth Flatpak Release ${{ github.ref_name }}
-          
-          ### Installation Instructions:
-          
-          1. Download the `arkrith.flatpak` file
-          2. Install it with: `flatpak install arkrith.flatpak`
-          3. Run with: `flatpak run com.arkrith.ArkRinth`
-          
-          ### Requirements:
-          - Flatpak installed on your system
-          - Flathub repository configured (for dependencies)
-          
-          ### Setup Flathub (if not already done):
-          ```bash
-          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          ```
-          
-        draft: false
-        prerelease: false
+modules:
+  - name: arkrith
+    buildsystem: simple
+    build-options:
+      append-path: /usr/lib/sdk/node18/bin
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        npm_config_cache: /var/cache/npm
+        npm_config_offline: 'true'
+    build-commands:
+      # Install dependencies
+      - npm ci --offline --cache=/var/cache/npm
+      # Build the application
+      - npm run build
+      # Package with electron-builder for Linux
+      - npm run dist:linux
+      # Install the built application
+      - mkdir -p /app/ArkRinth
+      - cp -r dist/linux-unpacked/* /app/ArkRinth/
+      # Create launcher script
+      - |
+        cat > /app/bin/arkrith << 'EOF'
+        #!/bin/bash
+        exec /app/ArkRinth/arkrith "$@"
+        EOF
+      - chmod +x /app/bin/arkrith
+      # Install desktop file and icons
+      - install -Dm644 com.arkrith.ArkRinth.desktop /app/share/applications/com.arkrith.ArkRinth.desktop
+      - install -Dm644 com.arkrith.ArkRinth.metainfo.xml /app/share/metainfo/com.arkrith.ArkRinth.metainfo.xml
+      # Install icons (adjust paths as needed)
+      - |
+        if [ -f "assets/icon.png" ]; then
+          install -Dm644 assets/icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
+        elif [ -f "src/assets/icon.png" ]; then
+          install -Dm644 src/assets/icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
+        elif [ -f "icon.png" ]; then
+          install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
+        else
+          # Create a placeholder icon if none found
+          echo "Warning: No icon found, creating placeholder"
+          mkdir -p /app/share/icons/hicolor/512x512/apps/
+          echo "No icon available" > /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
+        fi
+    sources:
+      - type: git
+        url: https://github.com/arc360alt/ArkRinthTesting.git
+        branch: master
+      # Include the desktop and metainfo files
+      - type: file
+        path: com.arkrith.ArkRinth.desktop
+      - type: file
+        path: com.arkrith.ArkRinth.metainfo.xml
+      # Cache npm dependencies
+      - type: file
+        url: https://registry.npmjs.org/npm/-/npm-10.2.4.tgz
+        sha256: 55ebf0bdb5c6ec6e3f7e88b1fc8e090b4b7c8eb25b5d6b3b7a20d89e56e7e1e4
+        dest: /var/cache/npm
+        dest-filename: npm-10.2.4.tgz
