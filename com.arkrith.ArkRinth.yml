@@ -38,46 +38,10 @@ modules:
     build-commands:
       # Install pnpm without npm - multiple approaches
       - |
-        echo "Installing pnpm using alternative methods..."
+        echo "Instaling PNPM (Maybe)"
         
-        # Method 1: Try corepack first (built into Node.js)
-        if command -v corepack >/dev/null 2>&1; then
-          echo "Trying corepack..."
-          if corepack enable && corepack prepare pnpm@latest --activate; then
-            echo "Successfully installed pnpm via corepack"
-            export PATH="$HOME/.local/share/pnpm:$PATH"
-            pnpm --version && exit 0
-          fi
-        fi
-        
-        # Method 2: Direct download from GitHub releases
-        echo "Downloading pnpm directly from GitHub..."
-        PNPM_VERSION=$(curl -s https://api.github.com/repos/pnpm/pnpm/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | sed 's/v//')
-        if [ -z "$PNPM_VERSION" ]; then
-          PNPM_VERSION="8.15.1"  # Fallback version
-        fi
-        
-        curl -fsSL "https://github.com/pnpm/pnpm/releases/download/v${PNPM_VERSION}/pnpm-linux-x64" -o /tmp/pnpm
-        chmod +x /tmp/pnpm
-        mkdir -p /usr/local/bin
-        cp /tmp/pnpm /usr/local/bin/pnpm
-        
-        if /usr/local/bin/pnpm --version; then
-          echo "Successfully installed pnpm via direct download"
-          export PATH="/usr/local/bin:$PATH"
-        else
-          # Method 3: Install script fallback
-          echo "Trying pnpm install script..."
-          curl -fsSL https://get.pnpm.io/install.sh | sh -
-          export PATH="$HOME/.local/share/pnpm:$PATH"
-          
-          if command -v pnpm >/dev/null 2>&1; then
-            echo "Successfully installed pnpm via install script"
-          else
-            echo "All pnpm installation methods failed"
-            exit 1
-          fi
-        fi
+        npm install pnpm
+        export PATH="$PWD/node_modules/.bin:$PATH"
       
       # Verify pnpm installation
       - pnpm --version
