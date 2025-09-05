@@ -1,0 +1,65 @@
+name: Build Flatpak
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-flatpak:
+    runs-on: ubuntu-latest
+    
+    container:
+      image: bilelmoussaoui/flatpak-github-actions:freedesktop-23.08
+      options: --privileged
+    
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    
+    - name: Build Flatpak
+      uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      with:
+        bundle: arkrith.flatpak
+        manifest-path: com.arkrith.ArkRinth.yml
+        cache-key: flatpak-builder-${{ github.sha }}
+        upload-artifact: false
+        
+    - name: Upload Flatpak Bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: arkrith-flatpak-${{ github.sha }}
+        path: arkrith.flatpak
+        retention-days: 30
+        
+    - name: Create Release Assets (on tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: arkrith.flatpak
+        name: ArkRinth ${{ github.ref_name }}
+        body: |
+          ## ArkRinth Flatpak Release ${{ github.ref_name }}
+          
+          ### Installation Instructions:
+          
+          1. Download the `arkrith.flatpak` file
+          2. Install it with: `flatpak install arkrith.flatpak`
+          3. Run with: `flatpak run com.arkrith.ArkRinth`
+          
+          ### Requirements:
+          - Flatpak installed on your system
+          - Flathub repository configured (for dependencies)
+          
+          ### Setup Flathub (if not already done):
+          ```bash
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          ```
+          
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
