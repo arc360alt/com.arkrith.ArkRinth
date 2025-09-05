@@ -36,30 +36,52 @@ modules:
         RUSTUP_HOME: /var/cache/rustup
         npm_config_cache: /var/cache/npm
     build-commands:
-      # Try multiple approaches to install pnpm with retries
+      # Install pnpm without npm - multiple approaches
       - |
-        echo "Attempting to install pnpm with retries..."
-        for i in {1..5}; do
-          echo "Attempt $i to install pnpm..."
-          if npm install -g pnpm@latest --registry=https://registry.npmjs.org --timeout=300000; then
-            echo "Successfully installed pnpm on attempt $i"
-            break
-          elif npm install -g pnpm@latest --registry=https://registry.yarnpkg.com --timeout=300000; then
-            echo "Successfully installed pnpm using yarn registry on attempt $i"
-            break
-          else
-            echo "Attempt $i failed, waiting 30 seconds before retry..."
-            sleep 30
-            if [ $i -eq 5 ]; then
-              echo "All attempts failed, trying to use Node.js built-in corepack..."
-              corepack enable || echo "Corepack failed"
-              corepack prepare pnpm@latest --activate || echo "Corepack prepare failed"
-              export PATH="$HOME/.local/share/pnpm:$PATH"
-            fi
+        echo "Installing pnpm using alternative methods..."
+        
+        # Method 1: Try corepack first (built into Node.js)
+        if command -v corepack >/dev/null 2>&1; then
+          echo "Trying corepack..."
+          if corepack enable && corepack prepare pnpm@latest --activate; then
+            echo "Successfully installed pnpm via corepack"
+            export PATH="$HOME/.local/share/pnpm:$PATH"
+            pnpm --version && exit 0
           fi
-        done
+        fi
+        
+        # Method 2: Direct download from GitHub releases
+        echo "Downloading pnpm directly from GitHub..."
+        PNPM_VERSION=$(curl -s https://api.github.com/repos/pnpm/pnpm/releases/latest | grep '"tag_name"' | cut -d'"' -f4 | sed 's/v//')
+        if [ -z "$PNPM_VERSION" ]; then
+          PNPM_VERSION="8.15.1"  # Fallback version
+        fi
+        
+        curl -fsSL "https://github.com/pnpm/pnpm/releases/download/v${PNPM_VERSION}/pnpm-linux-x64" -o /tmp/pnpm
+        chmod +x /tmp/pnpm
+        mkdir -p /usr/local/bin
+        cp /tmp/pnpm /usr/local/bin/pnpm
+        
+        if /usr/local/bin/pnpm --version; then
+          echo "Successfully installed pnpm via direct download"
+          export PATH="/usr/local/bin:$PATH"
+        else
+          # Method 3: Install script fallback
+          echo "Trying pnpm install script..."
+          curl -fsSL https://get.pnpm.io/install.sh | sh -
+          export PATH="$HOME/.local/share/pnpm:$PATH"
+          
+          if command -v pnpm >/dev/null 2>&1; then
+            echo "Successfully installed pnpm via install script"
+          else
+            echo "All pnpm installation methods failed"
+            exit 1
+          fi
+        fi
+      
       # Verify pnpm installation
-      - pnpm --version || echo "pnpm not available, this will likely fail"
+      - pnpm --version
+      
       # Install dependencies with retries
       - |
         echo "Installing dependencies with pnpm..."
@@ -77,10 +99,13 @@ modules:
             fi
           fi
         done
+      
       # Build the Tauri app (Linux version)
       - pnpm --filter=@modrinth/app run tauri build --config tauri-release.conf.json
+      
       # Create application directory
       - mkdir -p /app/ArkRinth
+      
       # Copy the built AppImage contents or executable
       - |
         if [ -f "target/release/bundle/appimage/ArkRinth"* ]; then
@@ -101,6 +126,7 @@ modules:
           ls -la target/release/bundle/ || echo "No bundle directory"
           exit 1
         fi
+      
       # Create launcher script
       - |
         cat > /app/bin/arkrith << 'EOF'
@@ -115,9 +141,11 @@ modules:
         fi
         EOF
       - chmod +x /app/bin/arkrith
+      
       # Install desktop file and metadata
       - install -Dm644 com.arkrith.ArkRinth.desktop /app/share/applications/com.arkrith.ArkRinth.desktop
       - install -Dm644 com.arkrith.ArkRinth.metainfo.xml /app/share/metainfo/com.arkrith.ArkRinth.metainfo.xml
+      
       # Install icon
       - |
         if [ -f "apps/app-frontend/assets/icon.png" ]; then
