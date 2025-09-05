@@ -19,7 +19,11 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    
+    - name: Install pnpm locally
+      run: |
+        npm install pnpm
+        export PATH="$PWD/node_modules/.bin:$PATH"
+        pnpm --version
     - name: Build Flatpak
       uses: flatpak/flatpak-github-actions/flatpak-builder@v6
       with:
