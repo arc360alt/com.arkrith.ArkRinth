@@ -127,7 +127,7 @@ modules:
         branch: master
       - type: archive
         url: https://registry.npmjs.org/pnpm/-/pnpm-9.12.3.tgz
-        sha256: <replace-with-real-sha256>
+        sha256: 24235772cc4ac82a62627cd47f834c72667a2ce87799a846ec4e8e555e2d4b8b
       - type: file
         path: com.arkrith.ArkRinth.desktop
       - type: file
