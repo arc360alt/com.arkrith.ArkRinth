@@ -2,9 +2,8 @@ app-id: com.arkrith.ArkRinth
 runtime: org.freedesktop.Platform
 runtime-version: '23.08'
 sdk: org.freedesktop.Sdk
-base: org.electronjs.Electron2.BaseApp
-base-version: '23.08'
 sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
   - org.freedesktop.Sdk.Extension.node18
 command: arkrith
 separate-locales: false
@@ -25,49 +24,76 @@ finish-args:
   - --talk-name=org.freedesktop.portal.OpenURI
   - --talk-name=org.gtk.vfs.*
   - --talk-name=org.freedesktop.FileManager1
-  - --env=NPM_CONFIG_CACHE=/var/cache/npm
+  - --env=CARGO_HOME=/var/cache/cargo
 
 modules:
   - name: arkrith
     buildsystem: simple
     build-options:
-      append-path: /usr/lib/sdk/node18/bin
+      append-path: /usr/lib/sdk/node18/bin:/usr/lib/sdk/rust-stable/bin
+      env:
+        CARGO_HOME: /var/cache/cargo
+        RUSTUP_HOME: /var/cache/rustup
+        npm_config_cache: /var/cache/npm
     build-commands:
-      - npm install --verbose
-      - npm run build --verbose
-      - npm run dist:linux --verbose || npm run build:linux --verbose || electron-builder --linux
+      # Install pnpm
+      - npm install -g pnpm@latest
+      # Install dependencies
+      - pnpm install
+      # Build the Tauri app (Linux version)
+      - pnpm --filter=@modrinth/app run tauri build --config tauri-release.conf.json
+      # Create application directory
       - mkdir -p /app/ArkRinth
+      # Copy the built AppImage contents or executable
       - |
-        if [ -d "dist/linux-unpacked" ]; then
-          cp -r dist/linux-unpacked/* /app/ArkRinth/
-        elif [ -d "dist/linux" ]; then
-          cp -r dist/linux/* /app/ArkRinth/
-        elif [ -d "build/linux-unpacked" ]; then
-          cp -r build/linux-unpacked/* /app/ArkRinth/
+        if [ -f "target/release/bundle/appimage/ArkRinth"* ]; then
+          # Extract AppImage contents
+          cd target/release/bundle/appimage/
+          chmod +x ArkRinth*.AppImage
+          ./ArkRinth*.AppImage --appimage-extract
+          cp -r squashfs-root/* /app/ArkRinth/
+          cd ../../../../
+        elif [ -f "target/release/arkrith" ]; then
+          # Copy binary directly if AppImage build failed
+          cp target/release/arkrith /app/ArkRinth/
         else
-          echo "Error: Could not find built application directory"
-          ls -la dist/ || ls -la build/ || ls -la .
+          echo "Error: Could not find built application"
+          echo "Available files in target/release/:"
+          ls -la target/release/ || echo "No target/release directory"
+          echo "Available bundle directories:"
+          ls -la target/release/bundle/ || echo "No bundle directory"
           exit 1
         fi
+      # Create launcher script
       - |
         cat > /app/bin/arkrith << 'EOF'
         #!/bin/bash
-        exec /app/ArkRinth/arkrith "$@"
+        if [ -f "/app/ArkRinth/AppRun" ]; then
+          exec /app/ArkRinth/AppRun "$@"
+        elif [ -f "/app/ArkRinth/arkrith" ]; then
+          exec /app/ArkRinth/arkrith "$@"
+        else
+          echo "Error: ArkRinth executable not found"
+          exit 1
+        fi
         EOF
       - chmod +x /app/bin/arkrith
+      # Install desktop file and metadata
       - install -Dm644 com.arkrith.ArkRinth.desktop /app/share/applications/com.arkrith.ArkRinth.desktop
       - install -Dm644 com.arkrith.ArkRinth.metainfo.xml /app/share/metainfo/com.arkrith.ArkRinth.metainfo.xml
+      # Install icon
       - |
-        if [ -f "assets/icon.png" ]; then
-          install -Dm644 assets/icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
-        elif [ -f "src/assets/icon.png" ]; then
-          install -Dm644 src/assets/icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
-        elif [ -f "icon.png" ]; then
-          install -Dm644 icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
+        if [ -f "apps/app-frontend/assets/icon.png" ]; then
+          install -Dm644 apps/app-frontend/assets/icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
+        elif [ -f "packages/assets/icon.png" ]; then
+          install -Dm644 packages/assets/icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
+        elif [ -f "apps/app/icons/icon.png" ]; then
+          install -Dm644 apps/app/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
         else
           echo "Warning: No icon found, creating placeholder"
           mkdir -p /app/share/icons/hicolor/512x512/apps/
-          echo "No icon available" > /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
+          # Create a simple placeholder icon
+          echo '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#1db954"/><text x="256" y="280" text-anchor="middle" fill="white" font-size="48">ArkRinth</text></svg>' > /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.svg
         fi
     sources:
       - type: git
