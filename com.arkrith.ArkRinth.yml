@@ -36,10 +36,47 @@ modules:
         RUSTUP_HOME: /var/cache/rustup
         npm_config_cache: /var/cache/npm
     build-commands:
-      # Install pnpm
-      - npm install -g pnpm@latest
-      # Install dependencies
-      - pnpm install
+      # Try multiple approaches to install pnpm with retries
+      - |
+        echo "Attempting to install pnpm with retries..."
+        for i in {1..5}; do
+          echo "Attempt $i to install pnpm..."
+          if npm install -g pnpm@latest --registry=https://registry.npmjs.org --timeout=300000; then
+            echo "Successfully installed pnpm on attempt $i"
+            break
+          elif npm install -g pnpm@latest --registry=https://registry.yarnpkg.com --timeout=300000; then
+            echo "Successfully installed pnpm using yarn registry on attempt $i"
+            break
+          else
+            echo "Attempt $i failed, waiting 30 seconds before retry..."
+            sleep 30
+            if [ $i -eq 5 ]; then
+              echo "All attempts failed, trying to use Node.js built-in corepack..."
+              corepack enable || echo "Corepack failed"
+              corepack prepare pnpm@latest --activate || echo "Corepack prepare failed"
+              export PATH="$HOME/.local/share/pnpm:$PATH"
+            fi
+          fi
+        done
+      # Verify pnpm installation
+      - pnpm --version || echo "pnpm not available, this will likely fail"
+      # Install dependencies with retries
+      - |
+        echo "Installing dependencies with pnpm..."
+        for i in {1..3}; do
+          echo "Dependency install attempt $i..."
+          if pnpm install --network-timeout=300000; then
+            echo "Dependencies installed successfully"
+            break
+          else
+            echo "Install attempt $i failed, waiting 60 seconds..."
+            sleep 60
+            if [ $i -eq 3 ]; then
+              echo "All dependency install attempts failed"
+              exit 1
+            fi
+          fi
+        done
       # Build the Tauri app (Linux version)
       - pnpm --filter=@modrinth/app run tauri build --config tauri-release.conf.json
       # Create application directory
