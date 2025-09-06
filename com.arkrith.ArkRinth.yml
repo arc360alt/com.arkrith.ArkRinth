@@ -1,134 +1,54 @@
 app-id: com.arkrith.ArkRinth
-runtime: org.freedesktop.Platform
-runtime-version: '23.08'
-sdk: org.freedesktop.Sdk
+runtime: org.gnome.Platform
+runtime-version: '45'
+sdk: org.gnome.Sdk
+# SDK Extensions are add-ons to the main SDK
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
   - org.freedesktop.Sdk.Extension.node18
-command: arkrith
-separate-locales: false
+command: arkrinth
 finish-args:
-  - --socket=wayland
-  - --socket=fallback-x11
   - --share=ipc
-  - --socket=pulseaudio
   - --share=network
-  - --filesystem=home
-  - --filesystem=xdg-download
-  - --filesystem=xdg-documents
-  - --persist=.minecraft
-  - --persist=.local/share/applications
+  - --socket=fallback-x11
+  - --socket=wayland
   - --device=dri
-  - --talk-name=org.freedesktop.Notifications
-  - --talk-name=org.freedesktop.portal.Desktop
-  - --talk-name=org.freedesktop.portal.OpenURI
-  - --talk-name=org.gtk.vfs.*
-  - --talk-name=org.freedesktop.FileManager1
-  - --env=CARGO_HOME=/var/cache/cargo
+  - --filesystem=host
+  - --talk-name=org.freedesktop.Secrets
 
 modules:
-  - name: arkrith
+  - name: arkrinth
     buildsystem: simple
+    # Build Options (including dependencies) are defined here
     build-options:
-      append-path: /usr/lib/sdk/node18/bin:/usr/lib/sdk/rust-stable/bin
+      # Install these packages from the SDK repo
+      packages:
+        - rust-stable
+        - nodejs
+        - pnpm # Or 'npm', use whichever you use in your project
+      # Set environment variables for the build
       env:
-        CARGO_HOME: /var/cache/cargo
-        RUSTUP_HOME: /var/cache/rustup
-        npm_config_cache: /var/cache/npm
+        CARGO_HOME: /run/build/arkrinth/cargo
+        RUSTUP_HOME: /run/build/arkrinth/rustup
+        # This tells Cargo where to put its build files
+        CARGO_TARGET_DIR: /run/build/arkrinth/target
     build-commands:
-      # Install pnpm without npm - multiple approaches
-      - |
-        echo "Installing pnpm from local tarball"
-        npm install -g ./pnpm-9.12.3.tgz --prefix=/app/pnpm
-        export PATH="/app/pnpm/bin:$PATH"
-        pnpm --version
-      
-      # Install dependencies with retries
-      - |
-        echo "Installing dependencies with pnpm..."
-        for i in {1..3}; do
-          echo "Dependency install attempt $i..."
-          if pnpm install --network-timeout=300000; then
-            echo "Dependencies installed successfully"
-            break
-          else
-            echo "Install attempt $i failed, waiting 60 seconds..."
-            sleep 60
-            if [ $i -eq 3 ]; then
-              echo "All dependency install attempts failed"
-              exit 1
-            fi
-          fi
-        done
-      
-      # Build the Tauri app (Linux version)
-      - pnpm --filter=@modrinth/app run tauri build --config tauri-release.conf.json
-      
-      # Create application directory
-      - mkdir -p /app/ArkRinth
-      
-      # Copy the built AppImage contents or executable
-      - |
-        if [ -f "target/release/bundle/appimage/ArkRinth"* ]; then
-          # Extract AppImage contents
-          cd target/release/bundle/appimage/
-          chmod +x ArkRinth*.AppImage
-          ./ArkRinth*.AppImage --appimage-extract
-          cp -r squashfs-root/* /app/ArkRinth/
-          cd ../../../../
-        elif [ -f "target/release/arkrith" ]; then
-          # Copy binary directly if AppImage build failed
-          cp target/release/arkrith /app/ArkRinth/
-        else
-          echo "Error: Could not find built application"
-          echo "Available files in target/release/:"
-          ls -la target/release/ || echo "No target/release directory"
-          echo "Available bundle directories:"
-          ls -la target/release/bundle/ || echo "No bundle directory"
-          exit 1
-        fi
-      
-      # Create launcher script
-      - |
-        cat > /app/bin/arkrith << 'EOF'
-        #!/bin/bash
-        if [ -f "/app/ArkRinth/AppRun" ]; then
-          exec /app/ArkRinth/AppRun "$@"
-        elif [ -f "/app/ArkRinth/arkrith" ]; then
-          exec /app/ArkRinth/arkrith "$@"
-        else
-          echo "Error: ArkRinth executable not found"
-          exit 1
-        fi
-        EOF
-      - chmod +x /app/bin/arkrith
-      
-      # Install desktop file and metadata
+      # Print versions for debugging
+      - rustc --version
+      - node --version
+      - npm --version
+      # Install JS dependencies and build the frontend
+      - npm install
+      - npm run build
+      # Build the Rust binary in RELEASE mode
+      - cargo build --release --verbose
+      # Install the built binary to the app's /bin directory
+      - install -Dm755 /run/build/arkrinth/target/release/arkrinth /app/bin/arkrinth
+      # Install the icon (update the path to match your project!)
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.arkrith.ArkRinth.png
+      # Install the desktop file (you will need to create this)
       - install -Dm644 com.arkrith.ArkRinth.desktop /app/share/applications/com.arkrith.ArkRinth.desktop
-      - install -Dm644 com.arkrith.ArkRinth.metainfo.xml /app/share/metainfo/com.arkrith.ArkRinth.metainfo.xml
-      
-      # Install icon
-      - |
-        if [ -f "apps/app-frontend/assets/icon.png" ]; then
-          install -Dm644 apps/app-frontend/assets/icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
-        elif [ -f "packages/assets/icon.png" ]; then
-          install -Dm644 packages/assets/icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
-        elif [ -f "apps/app/icons/icon.png" ]; then
-          install -Dm644 apps/app/icons/icon.png /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.png
-        else
-          echo "Warning: No icon found, creating placeholder"
-          mkdir -p /app/share/icons/hicolor/512x512/apps/
-          # Create a simple placeholder icon
-          echo '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512"><rect width="512" height="512" fill="#1db954"/><text x="256" y="280" text-anchor="middle" fill="white" font-size="48">ArkRinth</text></svg>' > /app/share/icons/hicolor/512x512/apps/com.arkrith.ArkRinth.svg
-        fi
     sources:
       - type: git
-        url: https://github.com/arc360alt/ArkRinthTesting.git
-        branch: master
-      - type: archive
-        url: https://registry.npmjs.org/pnpm/-/pnpm-9.12.3.tgz
-        sha256: 24235772cc4ac82a62627cd47f834c72667a2ce87799a846ec4e8e555e2d4b8b
-      - type: file
-        path: com.arkrith.ArkRinth.desktop
-      - type: file
-        path: com.arkrith.ArkRinth.metainfo.xml
+        url: https://github.com/arc360alt/ArkRinthTesting
+        branch: main
