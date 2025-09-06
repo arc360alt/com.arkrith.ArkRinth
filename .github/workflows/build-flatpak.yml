@@ -1,8 +1,11 @@
-name: Build and Release Flatpak
+name: Build Flatpak Bundle
 on:
-  push:
-    tags:
-      - '*'
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: 'Tag to build (e.g., v1.0.0)'
+        required: true
+        type: string
 
 jobs:
   build-flatpak:
@@ -30,7 +33,7 @@ jobs:
         run: |
           flatpak-builder \
           --force-clean \
-          --repo=repo \ 
+          --repo=repo \
           --install-deps-from=flathub \
           build-dir \
           flatpak-manifest/com.arkrith.ArkRinth.yml
@@ -42,5 +45,5 @@ jobs:
       - name: Upload Flatpak Bundle
         uses: actions/upload-artifact@v4
         with:
-          name: ArkRinth-Flatpak
+          name: ArkRinth-Flatpak-${{ github.event.inputs.release-tag }}
           path: com.arkrith.ArkRinth.flatpak
