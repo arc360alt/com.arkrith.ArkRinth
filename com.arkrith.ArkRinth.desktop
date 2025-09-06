@@ -1,12 +1,7 @@
 [Desktop Entry]
-Name=ArkRinth
-GenericName=Minecraft Mod Launcher
-Comment=A modern Minecraft launcher and mod manager - ArkRinth fork
-Exec=arkrith %U
-Icon=com.arkrith.ArkRinth
 Type=Application
-StartupNotify=true
-Categories=Game;
-MimeType=x-scheme-handler/modrinth;
-Keywords=minecraft;launcher;mods;modpack;game;
-StartupWMClass=ArkRinth
+Name=ArkRinth
+Icon=com.arkrith.ArkRinth
+Exec=arkrinth
+Categories=Utility;
+StartupWMClass=com-arkrith-ArkRinth
