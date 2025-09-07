@@ -10,8 +10,8 @@ on:
 jobs:
   build-flatpak:
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # Prevent early timeout
-    
+    timeout-minutes: 30
+
     steps:
     - name: Checkout Flatpak Manifest
       uses: actions/checkout@v4
@@ -22,48 +22,35 @@ jobs:
     - name: Install System Dependencies
       run: |
         sudo apt-get update
-        # Install ONLY flatpak and flatpak-builder first
         sudo apt-get install -y flatpak flatpak-builder
         echo "Flatpak installed successfully"
 
-    - name: Setup Flatpak Repository
+    - name: Setup Flatpak User Repository
       run: |
-        flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-        echo "Flathub repository added"
+        # Use --user flag for user-level installation
+        flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        echo "Flathub repository added to user space"
 
-    - name: Install Runtimes (with retry logic)
+    - name: Install Runtimes (User Space)
       run: |
-        # Install runtimes one by one with retries
-        max_retries=3
-        retry_count=0
-        
-        until flatpak install -y flathub org.gnome.Platform//45 org.gnome.Sdk//45 || [ $retry_count -eq $max_retries ]
-        do
-            retry_count=$((retry_count+1))
-            echo "Attempt $retry_count failed, retrying in 5 seconds..."
-            sleep 5
-        done
-        
-        if [ $retry_count -eq $max_retries ]; then
-            echo "Failed to install GNOME runtime after $max_retries attempts"
-            exit 1
-        fi
-
-        # Install extensions
-        flatpak install -y flathub org.freedesktop.Sdk.Extension.rust-stable//23.08
-        flatpak install -y flathub org.freedesktop.Sdk.Extension.node18//23.08
-        echo "All runtimes installed successfully"
+        # Install everything to user space with --user flag
+        flatpak install --user -y flathub org.gnome.Platform//45 org.gnome.Sdk//45
+        flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//23.08
+        flatpak install --user -y flathub org.freedesktop.Sdk.Extension.node18//23.08
+        echo "All runtimes installed to user space"
 
     - name: Verify Flatpak Installation
       run: |
         flatpak --version
         flatpak-builder --version
-        flatpak list
+        flatpak list --user
         echo "Verification complete"
 
     - name: Build with Flatpak Builder
       run: |
         cd flatpak-manifest
+        # Tell flatpak-builder to use user installations
+        XDG_DATA_DIRS="/home/runner/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:$XDG_DATA_DIRS" \
         flatpak-builder \
           --verbose \
           --force-clean \
