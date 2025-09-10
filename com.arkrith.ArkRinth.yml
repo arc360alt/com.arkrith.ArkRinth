@@ -2,7 +2,6 @@ app-id: com.arkrith.ArkRinth
 runtime: org.gnome.Platform
 runtime-version: '45'
 sdk: org.gnome.Sdk
-# SDK Extensions are add-ons to the main SDK
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
   - org.freedesktop.Sdk.Extension.node18
@@ -15,40 +14,57 @@ finish-args:
   - --device=dri
   - --filesystem=host
   - --talk-name=org.freedesktop.Secrets
-
 modules:
   - name: arkrinth
     buildsystem: simple
-    # Build Options (including dependencies) are defined here
     build-options:
-      # Install these packages from the SDK repo
-      packages:
-        - rust-stable
-        - nodejs
-        - pnpm # Or 'npm', use whichever you use in your project
-      # Set environment variables for the build
+      # Enable SDK extensions in the build environment
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node18/bin
+      build-args:
+        - --share=network
       env:
         CARGO_HOME: /run/build/arkrinth/cargo
         RUSTUP_HOME: /run/build/arkrinth/rustup
-        # This tells Cargo where to put its build files
         CARGO_TARGET_DIR: /run/build/arkrinth/target
+        # Node.js environment
+        NPM_CONFIG_CACHE: /run/build/arkrinth/npm-cache
+        # Tauri build environment
+        TAURI_PRIVATE_KEY: ""
+        TAURI_KEY_PASSWORD: ""
     build-commands:
+      # Install pnpm globally since it's not in the SDK by default
+      - npm install -g pnpm
       # Print versions for debugging
       - rustc --version
       - node --version
       - npm --version
-      # Install JS dependencies and build the frontend
-      - npm install
-      - npm run build
-      # Build the Rust binary in RELEASE mode
-      - cargo build --release --verbose
-      # Install the built binary to the app's /bin directory
-      - install -Dm755 /run/build/arkrinth/target/release/arkrinth /app/bin/arkrinth
-      # Install the icon (update the path to match your project!)
+      - pnpm --version
+      # Install frontend dependencies
+      - pnpm install
+      # Build the Tauri application
+      - pnpm tauri build
+      # Install the built binary
+      - install -Dm755 src-tauri/target/release/arkrinth /app/bin/arkrinth
+      # Install the icon (adjust path as needed)
       - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.arkrith.ArkRinth.png
-      # Install the desktop file (you will need to create this)
+      # Install additional icon sizes if they exist
+      - |
+        for size in 32 64 128 256 512; do
+          if [ -f "src-tauri/icons/${size}x${size}.png" ]; then
+            install -Dm644 "src-tauri/icons/${size}x${size}.png" "/app/share/icons/hicolor/${size}x${size}/apps/com.arkrith.ArkRinth.png"
+          fi
+        done
+      # Install the desktop file
       - install -Dm644 com.arkrith.ArkRinth.desktop /app/share/applications/com.arkrith.ArkRinth.desktop
+      # Install the metainfo file
+      - install -Dm644 com.arkrith.ArkRinth.metainfo.xml /app/share/metainfo/com.arkrith.ArkRinth.metainfo.xml
     sources:
       - type: git
         url: https://github.com/arc360alt/ArkRinthTesting
         branch: main
+        tag: $FLATPAK_BUILDER_N_JOBS # This will be replaced by the actual tag
+      # Include the desktop and metainfo files
+      - type: file
+        path: com.arkrith.ArkRinth.desktop
+      - type: file
+        path: com.arkrith.ArkRinth.metainfo.xml
