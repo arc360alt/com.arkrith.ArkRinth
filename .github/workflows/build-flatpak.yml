@@ -10,8 +10,7 @@ on:
 jobs:
   build-flatpak:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
+    timeout-minutes: 60
     steps:
     - name: Checkout Flatpak Manifest
       uses: actions/checkout@v4
@@ -25,46 +24,72 @@ jobs:
         sudo apt-get install -y flatpak flatpak-builder
         echo "Flatpak installed successfully"
 
-    - name: Setup Flatpak User Repository
+    - name: Setup Flatpak System Repository
       run: |
-        # Use --user flag for user-level installation
-        flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-        echo "Flathub repository added to user space"
+        # Add flathub to system (required for flatpak-builder)
+        sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+        echo "Flathub repository added to system"
 
-    - name: Install Runtimes (User Space)
+    - name: Install Required Runtimes and SDKs
       run: |
-        # Install everything to user space with --user flag
-        flatpak install --user -y flathub org.gnome.Platform//45 org.gnome.Sdk//45
-        flatpak install --user -y flathub org.freedesktop.Sdk.Extension.rust-stable//23.08
-        flatpak install --user -y flathub org.freedesktop.Sdk.Extension.node18//23.08
-        echo "All runtimes installed to user space"
+        # Install to system level (required for flatpak-builder)
+        sudo flatpak install -y flathub org.gnome.Platform//45 org.gnome.Sdk//45
+        sudo flatpak install -y flathub org.freedesktop.Sdk.Extension.rust-stable//23.08
+        sudo flatpak install -y flathub org.freedesktop.Sdk.Extension.node18//23.08
+        echo "All runtimes and SDKs installed"
 
     - name: Verify Flatpak Installation
       run: |
         flatpak --version
         flatpak-builder --version
-        flatpak list --user
+        flatpak list --system
+        echo "Available runtimes:"
+        flatpak list --runtime --system
         echo "Verification complete"
+
+    - name: Update Manifest with Release Tag
+      run: |
+        cd flatpak-manifest
+        # Replace the branch with the specific tag
+        sed -i "s/branch: main/tag: ${{ github.event.inputs.release-tag }}/" com.arkrith.ArkRinth.yml
+        # Verify the change
+        grep -A2 -B2 "tag:" com.arkrith.ArkRinth.yml || echo "Tag update completed"
 
     - name: Build with Flatpak Builder
       run: |
         cd flatpak-manifest
-        # Tell flatpak-builder to use user installations
-        XDG_DATA_DIRS="/home/runner/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:$XDG_DATA_DIRS" \
+        # Build using system installations
         flatpak-builder \
           --verbose \
           --force-clean \
           --repo=repo \
           --install-deps-from=flathub \
-          ../build-dir \
+          --ccache \
+          --require-changes \
+          build-dir \
           com.arkrith.ArkRinth.yml
+      env:
+        # Allow network access during build (needed for Rust/Node dependencies)
+        FLATPAK_BUILDER_ALLOW_NETWORK: "1"
 
     - name: Create Bundle
       run: |
-        flatpak build-bundle repo com.arkrith.ArkRinth.flatpak com.arkrith.ArkRinth
+        cd flatpak-manifest
+        flatpak build-bundle \
+          repo \
+          ../com.arkrith.ArkRinth.flatpak \
+          com.arkrith.ArkRinth \
+          --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+
+    - name: Verify Bundle
+      run: |
+        # Basic verification of the created bundle
+        ls -la com.arkrith.ArkRinth.flatpak
+        file com.arkrith.ArkRinth.flatpak
 
     - name: Upload Flatpak Bundle
       uses: actions/upload-artifact@v4
       with:
         name: ArkRinth-Flatpak-${{ github.event.inputs.release-tag }}
         path: com.arkrith.ArkRinth.flatpak
+        retention-days: 30
