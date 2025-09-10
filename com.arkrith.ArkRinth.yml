@@ -61,8 +61,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/arc360alt/ArkRinthTesting
-        branch: main
-        tag: $FLATPAK_BUILDER_N_JOBS # This will be replaced by the actual tag
+        tag: v1.2  # Change this to whatever tag you want to build
       # Include the desktop and metainfo files
       - type: file
         path: com.arkrith.ArkRinth.desktop
