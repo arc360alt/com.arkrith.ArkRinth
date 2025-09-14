@@ -1,95 +1,228 @@
 name: Build Flatpak Bundle
+
 on:
   workflow_dispatch:
     inputs:
       release-tag:
-        description: 'Tag to build (e.g., v1.0.0)'
+        description: 'Tag to build (e.g., v1.2)'
         required: true
         type: string
+        default: 'v1.2'
+  push:
+    tags:
+      - 'v*'
 
 jobs:
   build-flatpak:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+    
     steps:
-    - name: Checkout Flatpak Manifest
+    - name: Checkout Flatpak Manifest Repository
       uses: actions/checkout@v4
       with:
         repository: arc360alt/com.arkrith.ArkRinth
         path: flatpak-manifest
-
+        
+    - name: Set Release Tag
+      id: set-tag
+      run: |
+        if [ "${{ github.event_name }}" = "push" ]; then
+          echo "release_tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        else
+          echo "release_tag=${{ github.event.inputs.release-tag }}" >> $GITHUB_OUTPUT
+        fi
+        
     - name: Install System Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y flatpak flatpak-builder
-        echo "Flatpak installed successfully"
-
-    - name: Setup Flatpak System Repository
+        sudo apt-get install -y \
+          flatpak \
+          flatpak-builder \
+          elfutils \
+          patch \
+          wget \
+          git \
+          build-essential \
+          pkg-config
+        echo "System dependencies installed"
+        
+    - name: Setup Flatpak Repository
       run: |
-        # Add flathub to system (required for flatpak-builder)
         sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-        echo "Flathub repository added to system"
-
-    - name: Install Required Runtimes and SDKs
+        sudo flatpak remote-add --if-not-exists flathub-beta https://flathub.org/beta-repo/flathub-beta.flatpakrepo
+        echo "Flatpak repositories configured"
+        
+    - name: Install GNOME Runtime and SDK
       run: |
-        # Install to system level (required for flatpak-builder)
-        sudo flatpak install -y flathub org.gnome.Platform//45 org.gnome.Sdk//45
+        sudo flatpak install -y flathub org.gnome.Platform//47 org.gnome.Sdk//47
+        echo "GNOME Platform and SDK installed"
+        
+    - name: Install SDK Extensions
+      run: |
         sudo flatpak install -y flathub org.freedesktop.Sdk.Extension.rust-stable//23.08
-        sudo flatpak install -y flathub org.freedesktop.Sdk.Extension.node18//23.08
-        echo "All runtimes and SDKs installed"
-
-    - name: Verify Flatpak Installation
+        sudo flatpak install -y flathub org.freedesktop.Sdk.Extension.node20//23.08
+        echo "SDK Extensions installed"
+        
+    - name: Verify Installation
       run: |
+        echo "=== Flatpak Version ==="
         flatpak --version
         flatpak-builder --version
-        flatpak list --system
-        echo "Available runtimes:"
+        echo "=== Available Runtimes ==="
         flatpak list --runtime --system
-        echo "Verification complete"
-
+        echo "=== Available Apps ==="
+        flatpak list --app --system || echo "No apps installed"
+        echo "=== Verification Complete ==="
+        
     - name: Update Manifest with Release Tag
       run: |
         cd flatpak-manifest
-        # Replace the branch with the specific tag
-        sed -i "s/branch: main/tag: ${{ github.event.inputs.release-tag }}/" com.arkrith.ArkRinth.yml
-        # Verify the change
-        grep -A2 -B2 "tag:" com.arkrith.ArkRinth.yml || echo "Tag update completed"
-
-    - name: Build with Flatpak Builder
+        echo "Updating manifest to use tag: ${{ steps.set-tag.outputs.release_tag }}"
+        
+        # Update the git source tag
+        if grep -q "branch:" com.arkrith.ArkRinth.yml; then
+          sed -i "s/branch: .*/tag: ${{ steps.set-tag.outputs.release_tag }}/" com.arkrith.ArkRinth.yml
+        elif grep -q "tag:" com.arkrith.ArkRinth.yml; then
+          sed -i "s/tag: .*/tag: ${{ steps.set-tag.outputs.release_tag }}/" com.arkrith.ArkRinth.yml
+        else
+          # Add tag if neither branch nor tag exists
+          sed -i '/url: https:\/\/github.com\/arc360alt\/ArkRinthTesting.git/a \ \ \ \ \ \ \ \ tag: ${{ steps.set-tag.outputs.release_tag }}' com.arkrith.ArkRinth.yml
+        fi
+        
+        echo "=== Manifest Changes ==="
+        grep -A5 -B5 "ArkRinthTesting" com.arkrith.ArkRinth.yml || echo "Source section updated"
+        
+    - name: Create Required Files
       run: |
         cd flatpak-manifest
-        # Build using system installations
+        
+        # Create desktop file if it doesn't exist
+        if [ ! -f "com.arkrith.ArkRinth.desktop" ]; then
+          echo "Creating desktop file"
+          cat > com.arkrith.ArkRinth.desktop << 'EOF'
+        [Desktop Entry]
+        Type=Application
+        Name=ArkRinth
+        Comment=A Minecraft launcher based on Modrinth
+        Icon=com.arkrith.ArkRinth
+        Exec=arkrinth
+        Categories=Game;ActionGame;AdventureGame;Simulation;
+        Keywords=game;minecraft;launcher;modrinth;mods;modpacks;
+        StartupWMClass=ArkRinth
+        StartupNotify=true
+        EOF
+        fi
+        
+        # Create metainfo file if it doesn't exist
+        if [ ! -f "com.arkrith.ArkRinth.metainfo.xml" ]; then
+          echo "Creating metainfo file"
+          cat > com.arkrith.ArkRinth.metainfo.xml << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <component type="desktop-application">
+          <id>com.arkrith.ArkRinth</id>
+          <name>ArkRinth</name>
+          <summary>A Minecraft launcher based on Modrinth</summary>
+          <description>
+            <p>
+              ArkRinth is a custom Minecraft launcher forked from Modrinth, providing an easy and efficient way to manage and play Minecraft with mods and modpacks.
+            </p>
+            <p>
+              Features include mod management, modpack installation, multiple Minecraft version support, and a clean, user-friendly interface.
+            </p>
+          </description>
+          <categories>
+            <category>Game</category>
+          </categories>
+          <url type="homepage">https://github.com/arc360alt/ArkRinthTesting</url>
+          <url type="bugtracker">https://github.com/arc360alt/ArkRinthTesting/issues</url>
+          <launchable type="desktop-id">com.arkrith.ArkRinth.desktop</launchable>
+          <provides>
+            <binary>arkrinth</binary>
+          </provides>
+          <releases>
+            <release version="${{ steps.set-tag.outputs.release_tag }}" date="$(date -I)">
+              <description>
+                <p>Latest release of ArkRinth launcher</p>
+              </description>
+            </release>
+          </releases>
+          <content_rating type="oars-1.1">
+            <content_attribute id="violence-cartoon">none</content_attribute>
+            <content_attribute id="violence-fantasy">mild</content_attribute>
+            <content_attribute id="social-chat">intense</content_attribute>
+            <content_attribute id="money-purchasing">mild</content_attribute>
+          </content_rating>
+        </component>
+        EOF
+        fi
+        
+        echo "Required files created"
+        ls -la *.desktop *.xml || echo "Files may not exist"
+        
+    - name: Build Flatpak
+      run: |
+        cd flatpak-manifest
+        
+        echo "=== Starting Flatpak Build ==="
+        echo "Build directory: $(pwd)"
+        echo "Manifest file: com.arkrith.ArkRinth.yml"
+        
+        # Clean any existing build
+        rm -rf build-dir repo || true
+        
+        # Build the Flatpak
         flatpak-builder \
           --verbose \
           --force-clean \
           --repo=repo \
           --install-deps-from=flathub \
           --ccache \
-          --require-changes \
+          --keep-build-dirs \
           build-dir \
           com.arkrith.ArkRinth.yml
-      env:
-        # Allow network access during build (needed for Rust/Node dependencies)
-        FLATPAK_BUILDER_ALLOW_NETWORK: "1"
-
-    - name: Create Bundle
+          
+        echo "=== Build Complete ==="
+        
+    - name: Create Flatpak Bundle
       run: |
         cd flatpak-manifest
+        
+        echo "Creating Flatpak bundle..."
         flatpak build-bundle \
           repo \
-          ../com.arkrith.ArkRinth.flatpak \
+          ../ArkRinth-${{ steps.set-tag.outputs.release_tag }}.flatpak \
           com.arkrith.ArkRinth \
           --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
-
+          
+        echo "Bundle created successfully"
+        
     - name: Verify Bundle
       run: |
-        # Basic verification of the created bundle
-        ls -la com.arkrith.ArkRinth.flatpak
-        file com.arkrith.ArkRinth.flatpak
-
+        ls -la ArkRinth-*.flatpak
+        file ArkRinth-*.flatpak
+        echo "Bundle size: $(du -h ArkRinth-*.flatpak | cut -f1)"
+        
+    - name: Test Install Bundle (Optional)
+      continue-on-error: true
+      run: |
+        echo "Testing bundle installation..."
+        flatpak install --user --bundle --assumeyes ArkRinth-*.flatpak || echo "Test install failed, but this is not critical"
+        flatpak list --user | grep ArkRinth || echo "ArkRinth not found in user installations"
+        
     - name: Upload Flatpak Bundle
       uses: actions/upload-artifact@v4
       with:
-        name: ArkRinth-Flatpak-${{ github.event.inputs.release-tag }}
-        path: com.arkrith.ArkRinth.flatpak
+        name: ArkRinth-Flatpak-${{ steps.set-tag.outputs.release_tag }}
+        path: ArkRinth-*.flatpak
         retention-days: 30
+        
+    - name: Upload Build Logs (on failure)
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: build-logs-${{ steps.set-tag.outputs.release_tag }}
+        path: |
+          flatpak-manifest/build-dir
+          flatpak-manifest/.flatpak-builder
+        retention-days: 7
