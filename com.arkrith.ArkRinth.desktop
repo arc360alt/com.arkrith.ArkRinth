@@ -1,7 +1,13 @@
 [Desktop Entry]
 Type=Application
 Name=ArkRinth
+Comment=A Minecraft launcher based on Modrinth
+GenericName=Minecraft Launcher
 Icon=com.arkrith.ArkRinth
-Exec=arkrinth
-Categories=Utility;
-StartupWMClass=com-arkrith-ArkRinth
+Exec=arkrinth %U
+Terminal=false
+Categories=Game;ActionGame;AdventureGame;Simulation;
+Keywords=game;minecraft;launcher;modrinth;mods;modpacks;mc;
+StartupWMClass=ArkRinth
+StartupNotify=true
+MimeType=application/x-modrinth-modpack+zip;
