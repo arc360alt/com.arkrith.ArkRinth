@@ -1,10 +1,10 @@
 app-id: com.arkrith.ArkRinth
 runtime: org.gnome.Platform
-runtime-version: '45'
+runtime-version: '47'
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
-  - org.freedesktop.Sdk.Extension.node18
+  - org.freedesktop.Sdk.Extension.node20
 command: arkrinth
 finish-args:
   - --share=ipc
@@ -12,58 +12,157 @@ finish-args:
   - --socket=fallback-x11
   - --socket=wayland
   - --device=dri
-  - --filesystem=host
+  - --filesystem=xdg-download:rw
+  - --filesystem=xdg-documents:rw
+  - --filesystem=xdg-data/minecraft:create
+  - --filesystem=xdg-data/modrinth:create
+  - --filesystem=home/.minecraft:create
   - --talk-name=org.freedesktop.Secrets
+  - --talk-name=org.freedesktop.Notifications
+  - --own-name=com.arkrith.ArkRinth
+  # Allow system tray functionality
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --talk-name=org.gnome.Shell
+rename-desktop-file: ArkRinth.desktop
+rename-icon: com.arkrith.ArkRinth
 modules:
+  # Required for webkit2gtk and other dependencies
+  - name: webkit2gtk-4.1
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DPORT=GTK
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_BUBBLEWRAP_SANDBOX=OFF
+      - -DENABLE_GAMEPAD=OFF
+    sources:
+      - type: archive
+        url: https://webkitgtk.org/releases/webkitgtk-2.42.5.tar.xz
+        sha256: 5aa72d89726681c43cc1f2c6e0a3d5173e4aa5e5b0c3b1a6ac9a2c4b88bb2d8c
+    only-arches:
+      - x86_64
+      - aarch64
+  
   - name: arkrinth
     buildsystem: simple
     build-options:
-      # Enable SDK extensions in the build environment
-      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node18/bin
+      append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node20/bin
       build-args:
         - --share=network
       env:
         CARGO_HOME: /run/build/arkrinth/cargo
         RUSTUP_HOME: /run/build/arkrinth/rustup
         CARGO_TARGET_DIR: /run/build/arkrinth/target
-        # Node.js environment
         NPM_CONFIG_CACHE: /run/build/arkrinth/npm-cache
-        # Tauri build environment
-        TAURI_PRIVATE_KEY: ""
-        TAURI_KEY_PASSWORD: ""
+        PNPM_HOME: /run/build/arkrinth/pnpm
+        # Required for Tauri builds
+        PKG_CONFIG_PATH: /app/lib/pkgconfig:/app/share/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig
+        WEBKIT_DISABLE_COMPOSITING_MODE: "1"
     build-commands:
-      # Install pnpm globally since it's not in the SDK by default
-      - npm install -g pnpm
-      # Print versions for debugging
-      - rustc --version
-      - node --version
-      - npm --version
-      - pnpm --version
+      # Install pnpm
+      - npm install -g pnpm@latest
+      
+      # Debug information
+      - echo "=== Build Environment Debug ==="
+      - rustc --version || echo "Rust not found"
+      - cargo --version || echo "Cargo not found"
+      - node --version || echo "Node not found"
+      - npm --version || echo "NPM not found"
+      - pnpm --version || echo "PNPM not found"
+      - pkg-config --version || echo "pkg-config not found"
+      - echo "=== End Debug ==="
+      
+      # Install Tauri CLI
+      - cargo install tauri-cli --version "^2.0" --locked
+      
       # Install frontend dependencies
-      - pnpm install
-      # Build the Tauri application
-      - pnpm tauri build
-      # Install the built binary
+      - pnpm install --frozen-lockfile
+      
+      # Build the application
+      - pnpm tauri build --verbose
+      
+      # Install the binary
       - install -Dm755 src-tauri/target/release/arkrinth /app/bin/arkrinth
-      # Install the icon (adjust path as needed)
-      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/com.arkrith.ArkRinth.png
-      # Install additional icon sizes if they exist
+      
+      # Install desktop file with proper name
+      - |
+        if [ -f src-tauri/gen/deb/ArkRinth_*_amd64/data/usr/share/applications/arkrinth.desktop ]; then
+          install -Dm644 src-tauri/gen/deb/ArkRinth_*_amd64/data/usr/share/applications/arkrinth.desktop /app/share/applications/com.arkrith.ArkRinth.desktop
+        elif [ -f "com.arkrith.ArkRinth.desktop" ]; then
+          install -Dm644 com.arkrith.ArkRinth.desktop /app/share/applications/com.arkrith.ArkRinth.desktop
+        else
+          echo "Desktop file not found, creating basic one"
+          mkdir -p /app/share/applications
+          cat > /app/share/applications/com.arkrith.ArkRinth.desktop << EOF
+        [Desktop Entry]
+        Type=Application
+        Name=ArkRinth
+        Comment=A Minecraft launcher
+        Icon=com.arkrith.ArkRinth
+        Exec=arkrinth
+        Categories=Game;
+        Keywords=minecraft;launcher;modrinth;
+        StartupWMClass=ArkRinth
+        EOF
+        fi
+      
+      # Install icons from Tauri generated files or custom ones
       - |
         for size in 32 64 128 256 512; do
-          if [ -f "src-tauri/icons/${size}x${size}.png" ]; then
+          # Check Tauri generated icons first
+          if [ -f "src-tauri/gen/deb/ArkRinth_*_amd64/data/usr/share/icons/hicolor/${size}x${size}/apps/arkrinth.png" ]; then
+            install -Dm644 "src-tauri/gen/deb/ArkRinth_*_amd64/data/usr/share/icons/hicolor/${size}x${size}/apps/arkrinth.png" "/app/share/icons/hicolor/${size}x${size}/apps/com.arkrith.ArkRinth.png"
+          elif [ -f "src-tauri/icons/${size}x${size}.png" ]; then
             install -Dm644 "src-tauri/icons/${size}x${size}.png" "/app/share/icons/hicolor/${size}x${size}/apps/com.arkrith.ArkRinth.png"
+          elif [ -f "src-tauri/icons/${size}x${size}@2x.png" ]; then
+            install -Dm644 "src-tauri/icons/${size}x${size}@2x.png" "/app/share/icons/hicolor/${size}x${size}/apps/com.arkrith.ArkRinth.png"
           fi
         done
-      # Install the desktop file
-      - install -Dm644 com.arkrith.ArkRinth.desktop /app/share/applications/com.arkrith.ArkRinth.desktop
-      # Install the metainfo file
-      - install -Dm644 com.arkrith.ArkRinth.metainfo.xml /app/share/metainfo/com.arkrith.ArkRinth.metainfo.xml
+        
+        # Fallback: use the 128x128 icon if it exists
+        if [ -f "src-tauri/icons/128x128.png" ]; then
+          install -Dm644 "src-tauri/icons/128x128.png" "/app/share/icons/hicolor/128x128/apps/com.arkrith.ArkRinth.png"
+        fi
+      
+      # Install metainfo
+      - |
+        if [ -f "com.arkrith.ArkRinth.metainfo.xml" ]; then
+          install -Dm644 com.arkrith.ArkRinth.metainfo.xml /app/share/metainfo/com.arkrith.ArkRinth.metainfo.xml
+        else
+          echo "Creating basic metainfo file"
+          mkdir -p /app/share/metainfo
+          cat > /app/share/metainfo/com.arkrith.ArkRinth.metainfo.xml << 'EOF'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <component type="desktop-application">
+          <id>com.arkrith.ArkRinth</id>
+          <name>ArkRinth</name>
+          <summary>A Minecraft launcher based on Modrinth</summary>
+          <description>
+            <p>ArkRinth is a custom Minecraft launcher forked from Modrinth, providing an easy way to manage and play Minecraft with mods and modpacks.</p>
+          </description>
+          <categories>
+            <category>Game</category>
+          </categories>
+          <url type="homepage">https://github.com/arc360alt/ArkRinthTesting</url>
+          <url type="bugtracker">https://github.com/arc360alt/ArkRinthTesting/issues</url>
+          <launchable type="desktop-id">com.arkrith.ArkRinth.desktop</launchable>
+          <releases>
+            <release version="1.2" date="2025-01-01"/>
+          </releases>
+          <content_rating type="oars-1.1">
+            <content_attribute id="violence-cartoon">none</content_attribute>
+            <content_attribute id="violence-fantasy">mild</content_attribute>
+            <content_attribute id="social-chat">intense</content_attribute>
+          </content_rating>
+        </component>
+        EOF
+        fi
     sources:
       - type: git
-        url: https://github.com/arc360alt/ArkRinthTesting
-        tag: v1.2  # Change this to whatever tag you want to build
-      # Include the desktop and metainfo files
+        url: https://github.com/arc360alt/ArkRinthTesting.git
+        tag: v1.2
       - type: file
         path: com.arkrith.ArkRinth.desktop
+        dest-filename: com.arkrith.ArkRinth.desktop
       - type: file
         path: com.arkrith.ArkRinth.metainfo.xml
+        dest-filename: com.arkrith.ArkRinth.metainfo.xml
